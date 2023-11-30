@@ -1,0 +1,260 @@
+{% extends "kanban_app/base.html" %}
+{% block header %}
+<!--меню-->
+<ul>
+    <li><button id="create_sepulka">Создать Сепульку</button></li>
+    <li><button id="watch_delivered">Просмотреть доставленные</button></li>
+    <li><button id="exit">Выход</button></li>
+</ul>
+{% endblock %}
+{% block main %}
+
+{{ request.user.shmurdik.id|json_script:"shmurdik_id" }}
+<!-- форма создания -->
+<div id="create_form" class="hidden">
+    <label>теплая</label><input id="hot" type="checkbox">
+    <label>мягкая</label><input id="soft" type="checkbox">
+    <label>квадратная или маленькая</label>
+    <select id="square_or_small" name="square_or_small">
+        <option value="square">квадратная</option>
+        <option value="small">маленькая</option>
+    </select>
+    <label>размер</label>
+    <select id="size" name="size">
+        <option value="XXS">XXS</option>
+        <option value="XS">XS</option>
+        <option value="S">S</option>
+        <option value="M">M</option>
+        <option value="L">L</option>
+        <option value="XL">XL</option>
+        <option value="XXL">XXL</option>
+    </select>
+    <input type="submit" name="" id="create_id" class="hidden">
+</div>
+<!-- форма обновления -->
+<div id="update_form" class="hidden">
+    <label>теплая</label><input id="update_hot" type="checkbox">
+    <label>мягкая</label><input id="update_soft" type="checkbox">
+    <label>квадратная или маленькая</label>
+    <select id="update_square_or_small" name="square_or_small">
+        <option value="square">квадратная</option>
+        <option value="small">маленькая</option>
+    </select>
+    <label>размер</label>
+    <select id="update_size" name="size">
+        <option value="XXS">XXS</option>
+        <option value="XS">XS</option>
+        <option value="S">S</option>
+        <option value="M">M</option>
+        <option value="L">L</option>
+        <option value="XL">XL</option>
+        <option value="XXL">XXL</option>
+    </select>
+    <input id='sepulka_id' value="0"></input>
+    <input type="submit" id="save_changes" class="hidden">
+    <!-- <button id="setup_grymzick"class="hidden">Назначить грымзика</button> -->
+</div>
+<!-- форма для назначения грымзика -->
+<div id="setup_grymzik_form">
+    <u id="setup_grymzik_list">
+    </u>
+</form>
+<!-- колонки канбана -->
+<ul>
+    <li id="created_list"></li>
+    <li id="vactinated_list"></li>
+    <li id="processed_list"></li>
+    <li id="delivered_list"></li>
+
+</ul>
+
+<script>
+    const shmurdik_id = JSON.parse(document.getElementById('shmurdik_id').textContent);
+    const sepulkaSocket = new WebSocket("ws://localhost:8000/ws/create/");
+    
+    const showCreateFormButton = document.getElementById("create_sepulka");
+    
+    const createForm = document.getElementById("create_form");
+    const updateForm = document.getElementById("update_form");
+    const setupGrymzikForm = document.getElementById("setup_grymzik_form");
+    
+    const createSubmit = document.getElementById("create_id");
+    const updateSubmit = document.getElementById("save_changes");
+    
+    const sepukaIdField = document.getElementById("sepulka_id");
+    
+    var displayFormFunc = function(formElement, inputSubmitElement){
+        formElement.setAttribute("class", "show");
+        inputSubmitElement.setAttribute("class", "show");
+    }
+
+    var hideFormFunc = function(formElement, inputSubmitElement){
+        formElement.setAttribute("class", "hidden");
+        inputSubmitElement.setAttribute("class", "hidden");
+    }
+
+    var sendToSocket = function(socket, form, formData, submitBtn) {
+        socket.send(JSON.stringify(formData));
+        hideFormFunc(form, submitBtn);
+    }
+    
+    var getSepulkaCreateFormData = function(){
+        var is_hot = document.getElementById("hot").checked?true:false;
+        var is_soft = document.getElementById("soft").checked?true:false;
+        return {
+            hot: is_hot,
+            soft: is_soft,
+            square_or_small: $("#square_or_small").val(),
+            size: $("#size").val(),
+            shmurdik_id:shmurdik_id
+        };
+
+    }
+
+    var getSepulkaUpdateFormData = function(){
+        var is_hot = document.getElementById("update_hot").checked?true:false;
+        var is_soft = document.getElementById("update_soft").checked?true:false;
+        return {
+            hot: is_hot,
+            soft: is_soft,
+            square_or_small: $("#update_square_or_small").val(),
+            size: $("#update_size").val(),
+            shmurdik_id:shmurdik_id,
+            sepulka_id: sepukaIdField.getAttribute("value")
+        }; 
+    }
+    
+    var createSepulka = function() {
+        var formData = getSepulkaCreateFormData(); 
+        formData.command = "create";
+        sendToSocket(sepulkaSocket, createForm,formData, createSubmit);
+    };
+    var updateSepulka = function (){
+        var formData = getSepulkaUpdateFormData(); 
+        formData.command = 'update';
+        console.log(formData);
+        sendToSocket(sepulkaSocket, updateForm ,formData, updateSubmit);
+    };
+    
+    var rebuildSepulkaCardQuery = function(){
+        console.log("хочу получить грымзиков");
+        var sepulka_id = sepukaIdField.getAttribute("value");
+        var formData = {command: "rebuild_sepulka_card", sepulka_id:sepulka_id}
+
+        sepulkaSocket.send(JSON.stringify(formData));
+    }
+
+    var sepulkaCardRebuilding = function(grymziks){
+        var grymzik_list_container = document.getElementById("setup_grymzik_list");
+        var showGrymziksContainer = document.getElementById("setup_grymzik_form");
+        delAllInnerNodes(grymzik_list_container);
+        if (document.getElementById("removeAssignedGrymzikBtn") !== null){
+            showGrymziksContainer.removeChild(document.getElementById("removeAssignedGrymzikBtn"));
+        }
+        console.log(grymziks);
+
+        for (let i = 0; i < grymziks["data"].length; i++){
+            var grymzikElement = document.createElement('input');
+            grymzikElement.setAttribute('class', 'grymzikElement');
+            grymzikElement.setAttribute("type", "submit");
+            grymzikElement.setAttribute("value", grymziks['data'][i]['id']);
+            grymzik_list_container.appendChild(grymzikElement);
+        }
+
+        if(grymziks['current_grymzik_id'] !== null){
+            removeAssignedGrymzikBtn = document.createElement('input');
+            removeAssignedGrymzikBtn.setAttribute('type',"submit");
+            removeAssignedGrymzikBtn.setAttribute('id',"removeAssignedGrymzikBtn");
+            removeAssignedGrymzikBtn.setAttribute('value',grymziks['current_grymzik_id']);
+            showGrymziksContainer.appendChild(removeAssignedGrymzikBtn);
+
+            removeAssignedGrymzikBtn.addEventListener('click', function(e){
+                var data = {
+                    command:"remove_grymzik",
+                    sepulka_id:sepukaIdField.getAttribute("value")
+                };
+                sepulkaSocket.send(JSON.stringify(data));
+                rebuildSepulkaCardQuery();
+            });
+        }
+
+        freeGrymziksSubmitBtns = document.querySelectorAll('.grymzikElement');
+        for (let i = 0; i < freeGrymziksSubmitBtns.length; i++){
+            freeGrymziksSubmitBtns[i].addEventListener('click', ()=>{setupGrymzyk(grymziks['data'][i]['id']);});
+        }
+    }
+    
+    sepulkaSocket.onopen = function() {
+        var data = {command:"show"};
+        sepulkaSocket.send(JSON.stringify(data));
+    }
+    var delAllInnerNodes = function (element) {
+        while(element.firstChild){
+            element.removeChild(element.firstChild);
+        }
+    }
+
+    var sepulkasRebuilding = function(sepulkas_data) {
+            console.log("rebuild was starting");
+        
+            var created_list = document.getElementById("created_list");
+            var vactinated_list = document.getElementById("vactinated_list");
+            var processed_list = document.getElementById("processed_list");
+            var delivered_list = document.getElementById("delivered_list");
+            var hiden_list = document.createElement('ul');
+            
+            var target_elemet;
+
+            delAllInnerNodes(created_list);
+            delAllInnerNodes(vactinated_list);
+            delAllInnerNodes(processed_list);
+            delAllInnerNodes(delivered_list);
+
+            console.log(sepulkas_data);
+            for (let i = 0; i < sepulkas_data.length; i++) {
+                if (sepulkas_data[i]['state'] === 'C') target_elemet = created_list;
+                if (sepulkas_data[i]['state'] === 'V') target_elemet = vactinated_list;
+                if (sepulkas_data[i]['state'] === 'P') target_elemet = processed_list;
+                if (sepulkas_data[i]['state'] === 'D') target_elemet = delivered_list;
+                if (sepulkas_data[i]['state'] === 'F') target_elemet = hiden_list
+            
+                var txtButton = document.createTextNode(`sepulka ${sepulkas_data[i]['id']}`);
+                var sepulkaCard = document.createElement('button');
+                sepulkaCard.setAttribute('class','sepulkaElement');
+                sepulkaCard.setAttribute('value',sepulkas_data[i]['id']);
+                
+                sepulkaCard.appendChild(txtButton);
+                target_elemet.appendChild(sepulkaCard);
+
+            }
+            
+            var sepulkas = document.querySelectorAll('.sepulkaElement');
+            for (let i = 0; i < sepulkas.length; i++)
+            {
+                sepulkas[i].addEventListener('click',()=>{
+                    sepukaIdField.setAttribute("value", sepulkas[i].getAttribute("value"));
+                    displayFormFunc(updateForm, updateSubmit);
+                    rebuildSepulkaCardQuery();
+                });
+            }
+        }
+
+    var setupGrymzyk = function(grymzik_id){
+        console.log(`That {${grymzik_id}} grymzik will setup`);
+        var sepulka_id = sepukaIdField.getAttribute("value");
+        data = JSON.stringify({command:"setup_grymzik", grymzik_id:grymzik_id, sepulka_id:sepulka_id});
+        sepulkaSocket.send(data);
+        rebuildSepulkaCardQuery();
+    }
+    
+    sepulkaSocket.onmessage  = function(e){
+        data = JSON.parse(e.data);
+        if (data["data_objects"] === "sepulkas") sepulkasRebuilding(data["data"]);
+        if (data["data_objects"] === "grymziks") sepulkaCardRebuilding(data);
+    }
+        createSubmit.addEventListener('click', createSepulka);
+        showCreateFormButton.addEventListener('click', ()=>{displayFormFunc(createForm, createSubmit);});
+        updateSubmit.addEventListener('click', updateSepulka);
+
+    </script>
+{% endblock %}

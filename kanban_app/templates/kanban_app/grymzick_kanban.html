@@ -1,0 +1,87 @@
+{% extends "kanban_app/base.html" %}
+{% block header %}
+<!--меню-->
+<ul>
+    <!-- <li><button id="create_sepulka">Создать Сепульку</button></li> -->
+    <!-- <li><button id="watch_delivered">Просмотреть доставленные</button></li> -->
+    <li><button id="exit">Выход</button></li>
+</ul>
+{% endblock %}
+{% block main %}
+{{ request.user.grymzik.id|json_script:"grymzik_id" }}
+<h1 id="sepulka_container">
+    <button id="vaccinate_btn" class="show">Отметить как вакцинированную</button>
+    <button id="process_btn" class="show">Отметить как обработанную</button>
+</h1>
+
+<script>
+    const sepulkaSocket = new WebSocket("ws://localhost:8000/ws/create/");
+    const grymzik_id = JSON.parse(document.getElementById('grymzik_id').textContent);
+
+    const sepulkaPlace = document.getElementById("sepulka_container");
+    const vaccinateBtn = document.getElementById("vaccinate_btn");
+    const processBtn = document.getElementById("process_btn");
+
+    sepulkaSocket.onopen = function(){
+        var data = {
+            command:"show_grymziks_sepulka",
+            grymzik_id:grymzik_id
+        };
+        sepulkaSocket.send(JSON.stringify(data));
+        console.log(grymzik_id);
+    }
+
+    var changeStateQuery = function(state){
+        var sepulkaBtn = document.getElementById("sepulka_id");
+        if (sepulkaBtn !== null){
+            data = {
+                command: "change_sepulka_state",
+                sepulka_id: sepulkaBtn.getAttribute("value"),
+                state: state
+            };
+            sepulkaSocket.send(JSON.stringify(data));
+        }
+    }
+
+    sepulkaSocket.onmessage = function(e){
+        var sepulkaId = null;
+        var sepulkaState = null;
+        var sepulkaData = JSON.parse(e.data);
+        if(document.getElementById("sepulka_id")) sepulkaPlace.removeChild(document.getElementById("sepulka_id"));
+
+        if (sepulkaData["data_objects"] === "ONE"){
+            sepulkaId = sepulkaData["sepulka_id"];
+            sepulkaState = sepulkaData["state"];
+            console.log(sepulkaId, sepulkaState);
+        }
+        else{
+            sepulkas = sepulkaData["data"];
+            console.log(sepulkas);
+            for (let i = 0; i < sepulkas.length; i++ ){
+                if(sepulkas[i]['grymzik'] === grymzik_id){
+                    sepulkaId = sepulkas[i]["id"];
+                    sepulkaState = sepulkas[i]["state"];
+                }
+            }
+        }
+        if (sepulkaId !== null){
+            var sepulkaBtn = document.createElement("button");
+            var txtOnBtn = document.createTextNode(`sepulka ${sepulkaId}`);
+
+            console.log('data on message',sepulkaData);
+            
+            sepulkaBtn.setAttribute("id", "sepulka_id");
+            sepulkaBtn.setAttribute("value", sepulkaId);
+            sepulkaBtn.appendChild(txtOnBtn);
+            sepulkaPlace.appendChild(sepulkaBtn);
+
+            if (sepulkaState === 'P') vaccinateBtn.setAttribute("class", "hidden");
+            if (sepulkaState === 'D') processBtn.setAttribute("class", "hidden");
+        }
+    }
+
+    vaccinateBtn.addEventListener("click", function(){changeStateQuery("P");} );
+    processBtn.addEventListener("click", function(){changeStateQuery("D");} );
+
+</script>
+{% endblock %}

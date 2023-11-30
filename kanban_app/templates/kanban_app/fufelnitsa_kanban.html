@@ -1,0 +1,86 @@
+{% extends "kanban_app/base.html" %}
+{% block header %}
+<!--меню-->
+<ul>
+    <!-- <li><button id="create_sepulka">Создать Сепульку</button></li> -->
+    <!-- <li><button id="watch_delivered">Просмотреть доставленные</button></li> -->
+    <li><button id="exit">Выход</button></li>
+</ul>
+{% endblock %}
+{% block main %}
+{{ request.user.fufelnitsa.id|json_script:"fufelnitsa_id" }}
+<div id="sepulkas_pull">
+
+</div>
+<div id="sepulka_card_container">
+
+</div>
+
+<script>
+    const sepulkaSocket = new WebSocket("ws://localhost:8000/ws/create/");
+    const fufelnitsa_id = JSON.parse(document.getElementById('fufelnitsa_id').textContent);
+
+    const sepulkasPull = document.getElementById("sepulkas_pull"); 
+    const sepulkaContainer = document.getElementById("sepulka_card_container");
+
+    var showThisSepulka = function(sepulkaData){
+        var sep_quare = document.createElement( 'p');
+        var txtTosquare = document.createTextNode(sepulkaData['square_or_small']);
+        sep_quare.appendChild(txtTosquare);
+        sepulkaContainer.appendChild(sep_quare);
+        var delivrButton = document.createElement("button");
+        if (sepulkaData['square_or_small'] === "square"){
+            delivrButton.textContent = 'Катить';
+        }
+        else{
+            delivrButton.textContent = 'Отправить вертолетом';
+        }
+        sepulkaContainer.appendChild(delivrButton);
+        delivrButton.addEventListener('click', function() {
+            sepulkaSocket.send(JSON.stringify({
+                command: "change_sepulka_state",
+                sepulka_id: sepulkaData['id'],
+                state: "F"
+            }));
+            while(sepulkaContainer.firstChild){
+                sepulkaContainer.removeChild(sepulkaContainer.firstChild);
+            }
+            sepulkaSocket.onopen();
+        }
+        )
+
+    }
+
+    sepulkaSocket.onopen = function(){
+        var data = {
+            command: "show_pre_delivired_sepulkas",
+            fufelnitsa_id: fufelnitsa_id
+        };
+        sepulkaSocket.send(JSON.stringify(data));
+    }
+    sepulkaSocket.onmessage = function(e){
+        sepulkasData = JSON.parse(e.data);
+        console.log(sepulkasData);
+        if (sepulkasData['data_objects'] === 'ready_for_deliver'){
+            for(let i = 0; i < sepulkasData['data'].length; i++){
+                if (i == 0){
+                    var sepulkaCard = document.createElement('button');
+                        sepulkaCard.addEventListener('click', function() {showThisSepulka(sepulkasData['data'][0])});
+                }
+                else{
+                    var sepulkaCard = document.createElement('p');
+                }
+                var txtToCard = document.createTextNode(`Sepulka ${sepulkasData['data'][i]['id']}`); 
+                sepulkaCard.appendChild(txtToCard);
+                sepulkasPull.appendChild(sepulkaCard);
+
+
+            }
+        }
+        if (sepulkasData['data_objects'] === 'sepulkas'){
+
+        }
+    }
+
+</script>
+{% endblock %}
